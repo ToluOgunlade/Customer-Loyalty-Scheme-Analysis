@@ -1,0 +1,210 @@
+--For control tiers
+WITH tier AS(SELECT DISTINCT user_crm_id, prism_plus_tier, SUM(transaction_revenue) AS customer_revenue, COUNT(transaction_id) AS number_of_transactions
+FROM `warehouse.users` u
+LEFT JOIN `warehouse.transactions` t
+USING(user_crm_id)
+WHERE prism_plus_tier IS NOT NULL AND EXTRACT(YEAR FROM t.date) IN(2021, 2020) AND opt_in_status IS TRUE
+GROUP BY prism_plus_tier, user_crm_id
+ORDER BY prism_plus_tier
+)
+SELECT
+  user_crm_id,
+  CASE WHEN prism_plus_tier = 'None' AND number_of_transactions = 1 THEN 'bronze control'
+  WHEN prism_plus_tier = 'None' AND number_of_transactions = 2 THEN 'silver control'
+  WHEN prism_plus_tier = 'None' AND number_of_transactions = 3 THEN 'gold control'
+  WHEN prism_plus_tier = 'None' AND number_of_transactions >= 4 THEN 'platinum control'
+  ELSE prism_plus_tier END AS prism_plus_tier,
+  customer_revenue,
+  number_of_transactions
+FROM tier;
+
+--&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+--For test tiers
+WITH tier AS(SELECT DISTINCT user_crm_id, prism_plus_tier, SUM(transaction_revenue) AS customer_revenue, COUNT(transaction_id) AS number_of_transactions
+FROM `warehouse.users` u
+LEFT JOIN `warehouse.transactions` t
+USING(user_crm_id)
+WHERE prism_plus_tier IS NOT NULL AND EXTRACT(YEAR FROM t.date) IN(2021, 2020) AND opt_in_status IS TRUE
+GROUP BY prism_plus_tier, user_crm_id
+ORDER BY prism_plus_tier
+)
+SELECT
+  user_crm_id,
+  CASE WHEN prism_plus_tier = 'bronze' AND number_of_transactions = 1 THEN 'bronze test'
+  WHEN prism_plus_tier = 'silver' AND number_of_transactions = 2 THEN 'silver test'
+  WHEN prism_plus_tier = 'gold' AND number_of_transactions = 3 THEN 'gold test'
+  WHEN prism_plus_tier = 'platinum' AND number_of_transactions >= 4 THEN 'platinum test'
+  ELSE prism_plus_tier END AS prism_plus_test,
+  customer_revenue,
+  number_of_transactions
+FROM tier;
+
+--&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+--For test tiers
+WITH tier AS(SELECT DISTINCT user_crm_id, prism_plus_tier, SUM(transaction_revenue) AS customer_revenue, COUNT(transaction_id) AS number_of_transactions
+FROM `warehouse.users` u
+LEFT JOIN `warehouse.transactions` t
+USING(user_crm_id)
+WHERE prism_plus_tier IS NOT NULL AND EXTRACT(YEAR FROM t.date) IN(2021, 2020) AND opt_in_status IS TRUE
+GROUP BY prism_plus_tier, user_crm_id
+ORDER BY prism_plus_tier
+)
+SELECT
+  user_crm_id,
+  CASE WHEN prism_plus_tier = 'bronze' AND number_of_transactions = 1 THEN 'bronze test'
+  WHEN prism_plus_tier = 'silver' AND number_of_transactions = 2 THEN 'silver test'
+  WHEN prism_plus_tier = 'gold' AND number_of_transactions = 3 THEN 'gold test'
+  WHEN prism_plus_tier = 'platinum' AND number_of_transactions >= 4 THEN 'platinum test'
+  ELSE prism_plus_tier END AS prism_plus_test,
+  customer_revenue,
+  number_of_transactions
+FROM tier;
+
+--&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+-- For control tiers and total revenue calculation
+WITH tier AS (
+  SELECT DISTINCT 
+    user_crm_id, 
+    prism_plus_tier, 
+    SUM(transaction_revenue) AS customer_revenue, 
+    COUNT(transaction_id) AS number_of_transactions
+  FROM `warehouse.users` u
+  LEFT JOIN `warehouse.transactions` t
+  USING(user_crm_id)
+  WHERE prism_plus_tier IS NOT NULL 
+    AND EXTRACT(YEAR FROM t.date) IN (2021, 2020) 
+    AND opt_in_status IS TRUE
+  GROUP BY prism_plus_tier, user_crm_id
+  ORDER BY prism_plus_tier
+),
+
+-- Assign control tier names
+control_tiers AS (
+  SELECT
+    user_crm_id,
+    CASE 
+      WHEN prism_plus_tier = 'None' AND number_of_transactions = 1 THEN 'bronze control'
+      WHEN prism_plus_tier = 'None' AND number_of_transactions = 2 THEN 'silver control'
+      WHEN prism_plus_tier = 'None' AND number_of_transactions = 3 THEN 'gold control'
+      WHEN prism_plus_tier = 'None' AND number_of_transactions >= 4 THEN 'platinum control'
+      ELSE prism_plus_tier 
+    END AS control_tier,
+    customer_revenue,
+    number_of_transactions
+  FROM tier
+)
+
+-- Calculate total revenue by control tier
+SELECT 
+  control_tier,
+  SUM(customer_revenue) AS total_revenue,
+  SUM(number_of_transactions) AS total_transactions,
+  COUNT(user_crm_id) AS total_users
+FROM control_tiers
+GROUP BY control_tier
+ORDER BY control_tier;
+
+--&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+-- Profit per user
+WITH tier AS (
+    SELECT DISTINCT 
+        user_crm_id, 
+        prism_plus_tier, 
+        SUM(transaction_revenue) AS customer_revenue, 
+        COUNT(transaction_id) AS number_of_transactions 
+    FROM 
+        `warehouse.users` u
+    LEFT JOIN 
+        `warehouse.transactions` t
+    USING(user_crm_id)
+    WHERE 
+        prism_plus_tier IS NOT NULL 
+        AND EXTRACT(YEAR FROM t.date) IN (2021, 2020) 
+        AND opt_in_status IS TRUE
+    GROUP BY 
+        prism_plus_tier, 
+        user_crm_id
+),
+
+item_profits AS (
+    -- Step 1: Calculate profit per item in each transaction
+    SELECT 
+        t.user_crm_id,
+        ti.item_id,
+        (ti.item_price - pc.cost_of_item) * ti.item_quantity AS profit_per_item
+    FROM 
+        `prism-insights.warehouse.transactionsanditems` ti
+    JOIN 
+        `prism-insights.warehouse.product_costs` pc
+    ON 
+        ti.item_id = pc.item_id
+    JOIN 
+        `prism-insights.warehouse.transactions` t
+    ON 
+        ti.transaction_id = t.transaction_id
+),
+
+user_profits AS (
+    -- Step 2: Aggregate profit per transaction for each user
+    SELECT
+        user_crm_id,
+        SUM(ip.profit_per_item) AS total_profit
+    FROM 
+        item_profits ip
+    GROUP BY 
+        user_crm_id
+)
+
+-- Final output: Combine user information with profit calculation
+SELECT
+    t.user_crm_id,
+    CASE 
+        WHEN t.prism_plus_tier = 'None' AND t.number_of_transactions = 1 THEN 'bronze control'
+        WHEN t.prism_plus_tier = 'None' AND t.number_of_transactions = 2 THEN 'silver control'
+        WHEN t.prism_plus_tier = 'None' AND t.number_of_transactions = 3 THEN 'gold control'
+        WHEN t.prism_plus_tier = 'None' AND t.number_of_transactions >= 4 THEN 'platinum control'
+        ELSE t.prism_plus_tier 
+    END AS prism_plus_tier,
+    t.customer_revenue,
+    t.number_of_transactions,
+    COALESCE(up.total_profit, 0) AS total_profit -- Handle users without transactions
+FROM 
+    tier t
+LEFT JOIN 
+    user_profits up
+ON 
+    t.user_crm_id = up.user_crm_id
+ORDER BY 
+    t.prism_plus_tier;
+
+--&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+
+--Calculating shipping cost
+ WITH cost AS(
+  SELECT
+  DISTINCT user_crm_id,
+  ti.date,
+  transaction_id,
+  (SUM(item_price)*SUM(item_quantity)) AS cost,
+  transaction_total,
+  transaction_shipping
+ FROM `warehouse.transactions` t
+ INNER JOIN `warehouse.transactionsanditems` ti
+ USING(transaction_id)
+ WHERE user_crm_id IS NOT NULL AND ti.date >'2021-12-31' AND t.date>'2021-12-31' AND transaction_coupon IS NULL
+ GROUP BY user_crm_id, transaction_id, date, transaction_total, transaction_shipping
+)
+SELECT
+u.user_crm_id,
+prism_plus_tier,
+SUM(cost) AS cost,
+SUM(c.transaction_total) AS transaction_total,
+  ((SUM(cost))-SUM(c.transaction_total))/(SUM(cost)) AS discount,
+SUM(c.transaction_shipping) AS shipping
+FROM cost c
+INNER JOIN `warehouse.users` u
+USING (user_crm_id)
+WHERE prism_plus_tier NOT LIKE 'None'
+GROUP BY user_crm_id, prism_plus_tier
+
+--&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
